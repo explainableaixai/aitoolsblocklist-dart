@@ -1,6 +1,6 @@
 # aitoolsblocklist for Dart and Flutter
 
-Ask one question about any hostname: is this an AI tool, and if so, what kind? This package answers it from Dart code by calling the lookup endpoint of [search the AI tool register by domain](https://www.aitoolsblocklist.com). It works the same in a Flutter app, a command-line script, or a server written with `shelf` or `dart_frog`.
+Ask one question about any hostname: is this an AI tool, and if so, what kind? This package answers it from Dart code by calling the lookup endpoint of an [anti-AI blocklist API](https://www.aitoolsblocklist.com/ai-blocklist-api.php). It works the same in a Flutter app, a command-line script, or a server written with `shelf` or `dart_frog`.
 
 The register behind the endpoint covers more than 20,000 classified AI tool domains. A lookup returns the category of the tool, the type of AI it offers, and what the vendor's terms say about training on customer data.
 
@@ -139,15 +139,15 @@ final client = AIToolsBlocklistClient(apiKey: 'test', httpClient: fake);
 
 ## Getting a key
 
-See [plans, lookup quotas and the downloadable list](https://www.aitoolsblocklist.com/pricing.php) to pick a key. The lookup API is metered per call. The downloadable database suits resolvers and firewalls that need every domain locally.
+Pick a key on the [AI Tools Blocklist pricing](https://www.aitoolsblocklist.com/pricing.php) page. The lookup API is metered per call. The downloadable database suits resolvers and firewalls that need every domain locally.
 
 ## Where this fits
 
 A lookup answers questions one domain at a time. Two neighbouring services help when the question is bigger:
 
-- If you want to know which AI tools people already use before writing any rule, [audit which AI tools staff already use](https://www.shadowaitools.com) from existing DNS or proxy logs.
-- If software agents browse on your behalf, [stop agents at login and checkout pages](https://www.aiagentallowlist.com) with page-level rules.
-- For everything that is not AI, [category feeds for school and office filters](https://www.webfilteringdatabase.com) cover the rest of the web.
+- If you want to know which AI tools people already use before writing any rule, [run a shadow AI audit](https://www.shadowaitools.com/shadow-audit.php) from existing DNS or proxy logs.
+- If software agents browse on your behalf, an [AI agent allow list for login and checkout pages](https://www.aiagentallowlist.com/page-types-database.php) keeps them out of sensitive steps.
+- For everything that is not AI, [web filtering for schools and offices](https://www.webfilteringdatabase.com) covers the rest of the web.
 
 ## Other clients for the same register
 
