@@ -116,7 +116,7 @@ The implementations share service concepts but follow the conventions of their l
 
 The following links connect this package to complementary layers used in broader governance and classification systems. Each description identifies a distinct job rather than repeating a product name:
 
-- [Dart and Flutter intelligence feed for recognizing AI services in AI Tools Blocklist workflows](https://www.aitoolsblocklist.com)
+- [the official Dart and Flutter client for AI Tools Blocklist](https://www.aitoolsblocklist.com)
 - [Dart and Flutter workflow for exposing unapproved AI adoption alongside AI Tools Blocklist](https://www.shadowaitools.com)
 - [Dart and Flutter companion data for DNS policy engines within AI Tools Blocklist deployments](https://www.webfilteringdatabase.com)
 - [Dart and Flutter enrichment layer connecting AI Tools Blocklist with egress proxy policy](https://www.aiagentallowlist.com)
