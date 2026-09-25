@@ -1,162 +1,164 @@
-# AI Tools Blocklist for Dart and Flutter
+# aitoolsblocklist for Dart and Flutter
 
-`aitoolsblocklist` is the Dart and Flutter AI-service domain classification client for [AI Tools Blocklist](https://www.aitoolsblocklist.com). It gives applications a small, typed interface for a production data service while keeping authentication, URL construction, response decoding, retries, and error handling out of business logic.
+Ask one question about any hostname: is this an AI tool, and if so, what kind? This package answers it from Dart code by calling the lookup endpoint of [search the AI tool register by domain](https://www.aitoolsblocklist.com). It works the same in a Flutter app, a command-line script, or a server written with `shelf` or `dart_frog`.
 
-Security teams need to recognize AI services in DNS, firewall, proxy, and secure web gateway traffic without treating every technology website as an AI application. The service contains more than 20,000 classified AI-tool domains in 18 functional categories, is refreshed daily, and includes vendor training-on-customer-data findings for governance decisions.
+The register behind the endpoint covers more than 20,000 classified AI tool domains. A lookup returns the category of the tool, the type of AI it offers, and what the vendor's terms say about training on customer data.
 
-This package is designed as a real client library rather than a collection of copied HTTP examples. It supports the normal lifecycle of a lookup: validate input, send the API key in the expected header, apply a bounded timeout, decode a successful response, distinguish authentication and quota failures, and expose response fields without discarding information that may be needed later. It fits DNS and firewall enforcement, acceptable-use controls, DLP routing, AI vendor inventory and other applications where the decision must be repeatable and auditable.
+## Install
 
-## Installation
-
-Install the published package from pub.dev:
-
-```text
+```bash
 dart pub add aitoolsblocklist
 ```
 
-Store the API key outside source control. Examples use `AQ_API_KEY`, but production applications can obtain the value from their established secret manager. Never place a working key in a README, test fixture, command history, mobile bundle, browser-delivered JavaScript, or committed configuration file.
+For Flutter projects, `flutter pub add aitoolsblocklist` does the same thing. The only runtime dependency is `package:http`.
 
-## Quick start
+## A first lookup
 
 ```dart
+import 'dart:io';
 import 'package:aitoolsblocklist/aitoolsblocklist.dart';
 
 Future<void> main() async {
-  final client = AIToolsBlocklistClient(apiKey: const String.fromEnvironment('AQ_API_KEY'));
-  final result = await client.check('chat.openai.com');
-  print(result.toJson());
+  final client = AIToolsBlocklistClient(
+    apiKey: Platform.environment['AQ_API_KEY'] ?? '',
+  );
+  try {
+    final result = await client.check('chat.openai.com');
+    if (result['blocked'] == true) {
+      print('${result['domain']} is an AI tool: ${result['primary_category']}');
+    } else {
+      print('${result['domain']} is not in the register');
+    }
+  } finally {
+    client.close();
+  }
 }
 ```
 
-The client returns a structured result containing blocked status, functional category, AI type, data-training policy, and quota balance. It does not turn a nuanced response into an unexplained boolean unless a convenience method explicitly promises that behavior. Keeping the full result makes logs useful, allows a policy to evolve without repeating a lookup, and gives an operator enough context to understand why an action was taken.
+`check` accepts a bare domain or a subdomain. If you pass `eu.app.example-ai.com` and only `example-ai.com` is listed, the response tells you which parent matched.
 
-## What the client handles
+## What comes back
 
-The package owns transport concerns that should behave consistently across a codebase. It normalizes inputs only where the service contract allows normalization, attaches the API key without putting it in a query string, sends a descriptive user agent, negotiates JSON, checks status codes before decoding success models, and retains the response body on service errors. A caller should be able to catch an authentication problem separately from a quota limit, a malformed request, a temporary server failure, or a local network timeout.
+The client returns an `ApiResult`. Index it like a map, or call `toJson()` for an unmodifiable copy. For a listed domain the fields are:
 
-Retries are intentionally conservative. Network interruptions, `429` responses with a usable delay, and selected `5xx` responses may be retried with bounded backoff. Invalid input and authentication failures are not retried because another identical request cannot repair them. Applications performing large batches should add their own pacing, concurrency limit, cancellation, and checkpointing around the client instead of starting an unbounded number of requests.
-
-The default endpoint is suitable for normal hosted use, while a configurable base URL makes integration tests and licensed on-premises deployments possible. Timeout and retry values are configurable at client construction. Configuration is immutable after construction so the same instance can be shared safely according to normal Dart and Flutter conventions.
-
-## Response model
-
-The public model mirrors useful service data and leaves room for additive fields. Unknown JSON properties should not make an otherwise valid response fail. New package versions may add typed accessors when the service adds fields, but callers that retain the raw response can adopt new data without waiting for a library release.
-
-| Field | Purpose |
+| Field | Meaning |
 |---|---|
-| `domain` | Preserved from the service response for typed access, logging, or policy decisions. |
-| `blocked` | Preserved from the service response for typed access, logging, or policy decisions. |
-| `primary_category` | Preserved from the service response for typed access, logging, or policy decisions. |
-| `ai_type` | Preserved from the service response for typed access, logging, or policy decisions. |
-| `categories` | Preserved from the service response for typed access, logging, or policy decisions. |
-| `trains_on_data` | Preserved from the service response for typed access, logging, or policy decisions. |
-| `terms_checked` | Preserved from the service response for typed access, logging, or policy decisions. |
-| `quota_remaining` | Preserved from the service response for typed access, logging, or policy decisions. |
+| `domain` | The value you sent, normalised |
+| `blocked` | `true` when the domain belongs to a known AI tool |
+| `matched_domain` | Present only when a parent domain matched instead of the exact name |
+| `primary_category` | The main job of the tool, for example writing, image generation or coding |
+| `ai_type` | The kind of AI the tool offers |
+| `categories` | A list of `{category, subcategory}` pairs for tools that do several things |
+| `trains_on_data` | What the vendor terms say about training on your inputs, or `unstated` |
+| `opt_out_available` | Whether the terms describe an opt-out |
+| `enterprise_no_training` | Whether a business plan excludes training |
+| `api_no_training` | Whether API traffic is excluded from training |
+| `terms_checked` | The date those terms were last reviewed |
 
-Applications should record the query, result, decision, and request time in their own audit log. They should not record the API key. If results contain URLs or domains derived from user activity, apply the same retention and access controls used for the originating DNS, proxy, firewall, browser, or analytics data.
+For a domain that is not listed you get `blocked: false` and an empty `categories` list. Treat that as "not a known AI tool", not as "safe".
 
-## Integration pattern: request-time decision
+The word `unstated` matters. It means the terms were read and say nothing on the point. That is a finding in its own right, and many policies treat it the same as "yes".
 
-For interactive use, create one client during application startup and reuse it. Read the key and configuration once, validate that required values exist, then inject the client into the service that needs classifications. Reuse allows the underlying HTTP implementation to pool connections and makes global timeout and retry behavior predictable.
+## Deciding what to do with a result
 
-Keep the policy separate from the lookup. The package reports service facts; the application decides what those facts mean for a user, tenant, network segment, or agent. That separation makes it possible to run in observation mode, compare proposed decisions with existing controls, and change a policy without replacing the transport layer.
+The register tells you what a tool is. Your policy decides what happens next. A small mapping keeps that decision in one place:
 
-When a lookup is on a critical request path, define failure behavior before deployment. Security controls commonly fail closed or send an indeterminate result to review. Analytics enrichment commonly fails open and records a missing classification for later repair. There is no universal answer, but silently treating a timeout as a positive result is rarely defensible.
+```dart
+enum Action { allow, warn, block }
 
-## Integration pattern: batch processing
+Action decide(ApiResult r) {
+  if (r['blocked'] != true) return Action.allow;
+  final trains = r['trains_on_data'];
+  if (trains == 'yes' || trains == 'unstated') return Action.block;
+  return Action.warn;
+}
+```
 
-Batch jobs should remove duplicate inputs before making requests, preserve the original-to-normalized mapping, and save progress in restartable chunks. Use a small concurrency limit rather than one worker per row. Read quota information from every successful response and stop cleanly before exhaustion so a scheduled job can report what remains instead of producing a half-explained failure.
+Teams usually start with a rule like this and then add exceptions for tools they have approved, keyed on `matched_domain ?? domain`.
 
-A useful output record contains the original value, normalized value, lookup timestamp, package version, primary result, full category or policy data, and any error code. That record is adequate for later reconciliation and lets analysts distinguish “not found” from “not checked.” If the service data changes over time, the timestamp also makes clear which decision basis was available at the time.
+## Using it inside a Flutter app
 
-Cache only for a period appropriate to the product. A short process-local cache eliminates repeated calls during one job. A longer shared cache can reduce cost, but it must include enough context in the key and must not outlive the organization’s tolerance for stale classifications. Do not cache authentication, malformed-request, or transient server errors as if they were valid negative answers.
+A browser-style app, a kiosk or a managed student device can check a link before opening it. Keep the key off the device if you can. The simplest safe pattern is to route lookups through your own backend and pass that backend's URL as `baseUrl`:
 
-## Operational guidance
+```dart
+final client = AIToolsBlocklistClient(
+  apiKey: sessionToken,
+  baseUrl: 'https://api.your-company.example/ai-lookup',
+);
+```
 
-Use explicit timeouts at every layer. The HTTP timeout protects a single attempt, while an application deadline protects the complete operation including retries. Propagate cancellation from incoming requests and job supervisors. Emit metrics for total lookups, latency, success, status-code family, retries, cache hits, and remaining quota. Alert on sustained authentication errors, an unexpected increase in indeterminate results, or a quota trajectory that will reach zero before renewal.
+Your backend then adds the real key and forwards the call. The client appends `/check` to whatever base you give it.
 
-Pin a compatible major version in application dependencies and test upgrades in staging. Package releases use semantic versioning: patch releases repair behavior without changing the public contract, minor releases add compatible capabilities, and major releases may require source changes. Service responses can gain fields independently, so decoders are forward-compatible and callers should avoid exhaustive assumptions about future enum values.
+## Using it on a Dart server
 
-For regulated or security-sensitive deployments, retain the package version and policy version with every decision. A later review should be able to answer which code interpreted the response, which rule consumed it, and what the service returned. This is more valuable than a log line containing only “allowed” or “blocked.”
+On a proxy or gateway written in Dart, cache results, because the same few hundred domains make up most traffic. A plain map with a timestamp is enough for a single process:
+
+```dart
+final _cache = <String, (DateTime, ApiResult)>{};
+
+Future<ApiResult> cachedCheck(AIToolsBlocklistClient c, String host) async {
+  final hit = _cache[host];
+  if (hit != null && DateTime.now().difference(hit.$1).inHours < 24) {
+    return hit.$2;
+  }
+  final fresh = await c.check(host);
+  _cache[host] = (DateTime.now(), fresh);
+  return fresh;
+}
+```
+
+A 24 hour lifetime matches how often the register changes for most domains.
+
+## Timeouts and your own HTTP client
+
+The constructor takes an optional `timeout` (30 seconds by default) and an optional `http.Client`. Passing your own client lets you share connection pools, add logging, or plug in a retry wrapper from another package. Call `close()` when you are done, unless you passed a client you close yourself.
 
 ## Errors
 
-The client distinguishes configuration errors raised before a request, invalid-input responses, authentication failures, exhausted quota or authorization failures, rate limits, transport timeouts, server failures, and response-decoding problems. Error values include an HTTP status when one exists and a safely bounded response body for diagnostics. Secrets are never included in an error message.
+| Exception | When it is thrown |
+|---|---|
+| `ArgumentError` | Empty API key or empty domain, before any network call |
+| `AuthenticationException` | HTTP 401 or 403: a missing or wrong key, or the monthly quota is used up |
+| `RateLimitException` | HTTP 429: too many requests in a short time |
+| `ApiException` | Any other HTTP error, or a response that is not a JSON object |
 
-Callers should handle known service errors explicitly and place a final handler around unexpected transport failures. Batch workflows can attach an error to an individual row and continue when appropriate. Authentication failures should normally stop the batch because every remaining request would fail. Rate limits should pause according to server guidance. Invalid rows can be quarantined for correction.
+All three custom types extend `ApiException`, so one `on ApiException catch (e)` covers them. Each carries `statusCode` and the raw `body` for logging. The client does not retry by itself. If you want retries, back off on `RateLimitException` and leave `AuthenticationException` alone, since a retry cannot fix a bad key.
 
-## Security and privacy
+## Testing without the network
 
-Use TLS verification and do not add a “disable certificate checks” option to production configuration. Restrict API keys by environment and product where the account system permits it. Rotate a key immediately if it appears in a package, repository, build log, support ticket, or client-side application. A deleted Git commit does not make an exposed key secret again.
+`package:http` ships a `MockClient`, which makes unit tests straightforward:
 
-Minimize data sent to the service. Submit only the domain, URL, method, or file-derived hostname required by the documented operation. For log-analysis workflows, normalize and deduplicate locally before lookup. Do not attach cookies, page contents, user identifiers, authorization headers from the originating request, or unrelated log columns.
+```dart
+import 'package:http/http.dart' as http;
+import 'package:http/testing.dart';
 
-## Why a maintained SDK helps
+final fake = MockClient((req) async => http.Response(
+      '{"domain":"example.com","blocked":false,"categories":[]}', 200));
+final client = AIToolsBlocklistClient(apiKey: 'test', httpClient: fake);
+```
 
-Direct HTTP calls are easy for the first successful example and expensive at the edges. Six teams can otherwise invent six interpretations of timeouts, retries, missing fields, normalization, user agents, and quota failures. A maintained package gives those decisions one reviewed implementation and gives downstream applications a stable model even as internal transport details improve.
+## Getting a key
 
-An ecosystem-native package also makes discovery and evaluation easier. Users can inspect its license, release history, documentation, dependencies, source, and examples using familiar tools. They can pin a version, run dependency auditing, generate API documentation, and compare changes before upgrading. The README is part of that interface: it explains not just which method to call, but how the result belongs in an operational system.
+See [plans, lookup quotas and the downloadable list](https://www.aitoolsblocklist.com/pricing.php) to pick a key. The lookup API is metered per call. The downloadable database suits resolvers and firewalls that need every domain locally.
 
-## Related implementations for the same product
+## Where this fits
 
-Use the implementation that matches the deployment environment. These repositories and registry pages all focus on AI Tools Blocklist rather than unrelated products:
+A lookup answers questions one domain at a time. Two neighbouring services help when the question is bigger:
 
-- [Node and Python repository](https://github.com/explainableaixai/aiblocklist)
-- [Composer repository](https://github.com/optimiser4/aitoolsblocklist)
-- [GitLab mirror](https://gitlab.com/url-classifications/aiblocklist)
-- [npm lookup client](https://www.npmjs.com/package/aitoolsblocklist)
-- [npm policy client](https://www.npmjs.com/package/aiblocklist)
-- [Python lookup client](https://pypi.org/project/aitoolsblocklist/)
-- [Rust client](https://crates.io/crates/aitoolsblocklist)
-- [PHP client](https://packagist.org/packages/aitoolsblocklist/aitoolsblocklist)
+- If you want to know which AI tools people already use before writing any rule, [audit which AI tools staff already use](https://www.shadowaitools.com) from existing DNS or proxy logs.
+- If software agents browse on your behalf, [stop agents at login and checkout pages](https://www.aiagentallowlist.com) with page-level rules.
+- For everything that is not AI, [category feeds for school and office filters](https://www.webfilteringdatabase.com) cover the rest of the web.
 
-The implementations share service concepts but follow the conventions of their languages. Method names, async models, error hierarchies, and packaging layouts are intentionally native rather than forced into a byte-for-byte common shape.
+## Other clients for the same register
 
-## Companion data services
+The same lookup is available outside Dart:
 
-The following links connect this package to complementary layers used in broader governance and classification systems. Each description identifies a distinct job rather than repeating a product name:
+- [npm package](https://www.npmjs.com/package/aitoolsblocklist) for Node.js
+- [PyPI package](https://pypi.org/project/aitoolsblocklist/) for Python
+- [Rust crate](https://crates.io/crates/aitoolsblocklist)
 
-- [the official Dart and Flutter client for AI Tools Blocklist](https://www.aitoolsblocklist.com)
-- [Dart and Flutter workflow for exposing unapproved AI adoption alongside AI Tools Blocklist](https://www.shadowaitools.com)
-- [Dart and Flutter companion data for DNS policy engines within AI Tools Blocklist deployments](https://www.webfilteringdatabase.com)
-- [Dart and Flutter enrichment layer connecting AI Tools Blocklist with egress proxy policy](https://www.aiagentallowlist.com)
-
-These services solve different questions. AI-service recognition identifies tools in network traffic. Shadow-AI analysis turns existing logs into an inventory. Agent URL policy evaluates the page an autonomous browser wants to reach. Content classification describes what a site is about, and filtering classification maps a site to network-policy categories. Combining them should be an explicit architecture decision, not an assumption that one verdict substitutes for another.
-
-## Standards and further reading
-
-- [NIST Cybersecurity Framework](https://www.nist.gov/cyberframework)
-- [European Union AI Act](https://eur-lex.europa.eu/eli/reg/2024/1689/oj)
-- [MITRE ATLAS](https://atlas.mitre.org/)
-
-These references provide vocabulary and control objectives; they do not endorse this package. Map the client’s output to the organization’s own risk assessment, legal duties, acceptable-use rules, and incident process.
-
-## Frequently asked questions
-
-### Does the package include the underlying database?
-
-No. The normal package is a client and contains no bulk commercial dataset. It sends documented lookup inputs to the hosted service and returns structured results. Where an offline database licence is available, the same client interface can be adapted to an internal endpoint so application policy does not have to change.
-
-### Should I create a new client for every lookup?
-
-No. Construct one client for an application or worker and reuse it. This keeps configuration consistent and allows connection pooling. Create separate clients only when endpoints, credentials, tenants, or materially different timeout policies require isolation.
-
-### Can I use the result as a permanent fact?
-
-Treat classifications and policy findings as dated intelligence. Websites change purpose, vendors revise terms, new page types appear, and threat or governance policy evolves. Store the lookup time and refresh data according to the consequence of staleness.
-
-### What should happen when the service is unavailable?
-
-Choose behavior based on the calling system’s risk. A security gate can deny or require review. An enrichment pipeline can retain the row as pending. Whatever the choice, make it explicit, observable, and tested. Do not convert an infrastructure failure into a confident classification.
-
-### Is batch processing one API call?
-
-The convenience batch method coordinates individual lookups unless the product documentation explicitly describes a bulk endpoint. Each item can consume quota. Deduplicate inputs, pace work, monitor the returned balance, and checkpoint output.
-
-### How should I contribute?
-
-Open an issue in the source repository with the package version, runtime version, a minimal reproduction, expected behavior, and sanitized response details. Never include a working API key or private network log. Changes should include tests and update public documentation when behavior changes.
+Source for this package lives in the repository linked from the pub.dev sidebar. Issues and pull requests are welcome there.
 
 ## License
 
-MIT. The package licence covers the client source. Access to hosted APIs, downloadable datasets, and commercial data remains governed by the applicable service plan and terms.
+MIT. See `LICENSE`.
