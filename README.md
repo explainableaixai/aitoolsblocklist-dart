@@ -1,6 +1,6 @@
 # aitoolsblocklist for Dart and Flutter
 
-Ask one question about any hostname: is this an AI tool, and if so, what kind? This package answers it from Dart code by calling the lookup endpoint of an [anti-AI blocklist API](https://www.aitoolsblocklist.com/ai-blocklist-api.php). It works the same in a Flutter app, a command-line script, or a server written with `shelf` or `dart_frog`.
+Ask one question about any hostname: is this an AI tool, and if so, what kind? This package answers it from Dart code by calling the lookup endpoint of an [anti-AI blocklist API](https://www.aitoolsblocklist.com). It works the same in a Flutter app, a command-line script, or a server written with `shelf` or `dart_frog`.
 
 The register behind the endpoint covers more than 20,000 classified AI tool domains. A lookup returns the category of the tool, the type of AI it offers, and what the vendor's terms say about training on customer data.
 
@@ -139,7 +139,7 @@ final client = AIToolsBlocklistClient(apiKey: 'test', httpClient: fake);
 
 ## Getting a key
 
-Pick a key on the [AI Tools Blocklist pricing](https://www.aitoolsblocklist.com/pricing.php) page. The lookup API is metered per call. The downloadable database suits resolvers and firewalls that need every domain locally.
+Pick a key on the [AI Tools Blocklist pricing](https://www.aitoolsblocklist.com) page. The lookup API is metered per call. The downloadable database suits resolvers and firewalls that need every domain locally.
 
 ## Where this fits
 
